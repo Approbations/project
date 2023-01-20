@@ -6,8 +6,10 @@ import math
 vec2, vec3 = pygame.math.Vector2, pygame.math.Vector3
 pygame.font.init()
 FONT = pygame.font.SysFont('calibry', 50)
-RES = WIDTH, HEIGHT = 1600, 900
+RES = WIDTH, HEIGHT = 800, 800
 NUM_STARS = 101
+LOST = False
+WIN = False
 
 
 class Menu:
@@ -41,13 +43,31 @@ class Menu:
 
 class Star:
     def __init__(self, app):
-        pass
+        self.screen = app.screen
+        self.pos3d = self.get_pos3d()
+        self.vel = random.uniform(0.05, 0.25)
+        self.color = random.choice(COLORS)
+        self.screen_pos = vec2(0, 0)
+        self.size = 10
+
+    def get_pos3d(self, scale_pos=35):
+        angle = random.uniform(0, 2 * math.pi)
+        radius = random.randrange(HEIGHT // scale_pos, HEIGHT) * scale_pos
+        x = radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        return vec3(x, y, Z_DISTANCE)
 
     def update(self):
-        pass
+        self.pos3d.z -= self.vel
+        self.pos3d = self.get_pos3d() if self.pos3d.z < 1 else self.pos3d
+        self.screen_pos = vec2(self.pos3d.x, self.pos3d.y) / self.pos3d.z + CENTER
+        self.pos3d.xy = self.pos3d.xy.rotate(0.2)
+
 
     def draw(self):
-        pass
+        s = self.size
+        if (-s < self.screen_pos.x < WIDTH + s) and (-s < self.screen_pos.y < HEIGHT + s):
+            pygame.draw.rect(self.screen, self.color, (*self.screen_pos, self.size, self.size))
 
 
 class Starfild:
@@ -56,19 +76,29 @@ class Starfild:
 
     def run(self):
         [star.update() for star in self.stars]
+        self.stars.sort(key=lambda star: star.pos3d.z, reverse=True)
         [star.draw() for star in self.stars]
 
+vec2, vec3 = pygame.math.Vector2, pygame.math.Vector3
 
+CENTER = vec2(WIDTH // 2, HEIGHT // 2)
+COLORS = 'red green blue orange purple cyan'.split()
+Z_DISTANCE = 40
+ALPHA = 120
 class Wallpaper:
-    def __init__(self):
-        # self.screen = pygame.display.set_mode(RES)
+    def __init__(self, screen):
+        self.screen = screen
+        self.alpha_surface = pygame.Surface(RES)
+        self.alpha_surface.set_alpha(ALPHA)
         self.clock = pygame.time.Clock()
         self.starfild = Starfild(self)
+        self.run()
 
-    def run(self, screen):
-        screen.fill((0, 0, 0))
+
+    def run(self):
+        self.screen.blit(self.alpha_surface, (0, 0))
         self.starfild.run()
-        self.clock.tick()
+        self.clock.tick(24)
     
 
 class Game:
@@ -83,7 +113,6 @@ class Game:
     def run(self):
         pygame.init()
         self.screen = pygame.display.set_mode(self.screenSize)
-
         running = True
         while running:
             for event in pygame.event.get():
@@ -92,13 +121,24 @@ class Game:
                 if event.type == pygame.MOUSEBUTTONDOWN and not(self.board.get_win() or self.board.get_lost()):
                     self.Click(pygame.mouse.get_pos(), pygame.mouse.get_pressed()[2])
                 if event.type == pygame.KEYDOWN:
+                    global LOST
+                    LOST = True
+                    f = open('pics/stats.txt', mode='r').read()
+                    f1 = open('pics/stats.txt', mode='w')
+                    f1 = f1.write(f"{int(f.split()[0]) + 1} {f.split()[1]} {int(f.split()[2]) + 1}")
+                    print('lost')
                     self.solver.move()
                 self.screen.fill((0, 0 ,0))
                 self.draw()
                 pygame.display.flip()
                 if self.board.get_win():
+                    print('win')
+                    f = open('pics/stats.txt', mode='r').read()
+                    f1 = open('pics/stats.txt', mode='w')
+                    f1 = f1.write(f"{int(f.split()[0]) + 1} {int(f.split()[1]) + 1} {f.split()[2]}")
+                    global WIN
+                    WIN = True
                     running = False
-                    # Over()
         pygame.quit()
 
     def draw(self):
@@ -113,8 +153,8 @@ class Game:
 
     def loadImages(self):
         lst = ['pics/0.png', 'pics/not_e.png', 'pics/bomb.png', 'pics/1.png', 'pics/2.png', 'pics/3.png', 'pics/4.png',
-               'pics/5.png', 'pics/6.png', 'pics/7.png', 'pics/8.png']
-        lst2 = ['0', 'empty', 'bomb', '1', '2', '3', '4', '5', '6', '7', '8']
+               'pics/5.png', 'pics/6.png', 'pics/7.png', 'pics/8.png', 'pics/flag.jpg']
+        lst2 = ['0', 'empty', 'bomb', '1', '2', '3', '4', '5', '6', '7', '8', 'flag']
         self.images = {}
         for n, pic in enumerate(lst):
             im = pygame.image.load(pic)
@@ -127,8 +167,7 @@ class Game:
         if self.board.get_lost():
             if cell.get_bomb():
                 return 'bomb'
-            # потом вместо восьмерки флаг должен быть
-        return '8' if cell.flag() else 'empty'
+        return 'flag' if cell.flag() else 'empty'
 
     def Click(self, position, flag):
         index = tuple(int(pos // size) for pos, size in zip(position, self.pieceSize))[::-1]
@@ -291,21 +330,10 @@ class Choice(Menu):
     def select(self):
         if self.current_option == 0:
             switch_scene(game((10, 10), 0.1))
-        if self.current_option == 1:
+        elif self.current_option == 1:
             switch_scene(game((15, 15), 0.2))
-        if self.current_option == 2:
+        elif self.current_option == 2:
             switch_scene(game((25, 25), 0.35))
-        self.functions[self.current_option]()
-
-
-class Over(Choice):
-    def select(self):
-        if self.current_option == 0:
-            switch_scene(scene1())
-        if self.current_option == 1:
-            switch_scene(stats())
-        if self.current_option == 2:
-            switch_scene(scene2())
         self.functions[self.current_option]()
 
 
@@ -318,20 +346,25 @@ current_scene = None
 
 menu = Menu()
 choice = Choice()
+
 menu.append_option('Новая игра', lambda: print('new game'))
 menu.append_option('Статистика игрока', lambda: print('statistic'))
 menu.append_option('Выйти', quit)
 choice.append_option('Легко', lambda: print('easy'))
 choice.append_option('Средне', lambda: print('normal'))
 choice.append_option('Сложно', lambda: print('hard'))
-# создать бд и читать количесво побед от туда
-all_games = FONT.render(f'Всего игр сыграно: {0}', True, (255, 0, 0))
+
+file = open('pics/stats.txt').read()
+all_games = FONT.render(f'Всего игр сыграно: {file.split()[0]}', True, (255, 0, 0))
+win_games = FONT.render(f'Всего побед: {file.split()[1]}', True, (255, 0, 0))
+lose_games = FONT.render(f'Всего поражений: {file.split()[2]}', True, (255, 0, 0))
 change_str = pygame.font.SysFont('calibry', 30).render(f'клавиши S и W для выбора', True, (255, 255, 255))
 cont = pygame.font.SysFont('calibry', 30).render(f'нажмите пробел для выхода', True, (255, 0, 0))
-wallpaper = Wallpaper()
+wining = FONT.render('Вы победили', True, (255, 0, 0))
 
 
 def scene1():
+    print('menu')
     pygame.init()
     screen = pygame.display.set_mode((800, 800))
     pygame.display.set_caption('Сапер')
@@ -349,7 +382,7 @@ def scene1():
                 elif event.key == K_SPACE:
                     menu.select()
                     running = False
-        wallpaper.run(screen)
+        Wallpaper(screen)
         menu.draw(screen, 250, 300, 75)
         screen.blit(change_str, (0, 775))
         pygame.display.flip()
@@ -374,13 +407,15 @@ def scene2():
                 elif event.key == K_SPACE:
                     choice.select()
                     running = False
-        wallpaper.run(screen)
-        choice.draw(screen, 250, 300, 75)
-        screen.blit(change_str, (0, 775))
-        pygame.display.flip()
+        if running:
+            Wallpaper(screen)
+            choice.draw(screen, 250, 300, 75)
+            screen.blit(change_str, (0, 775))
+            pygame.display.flip()
     pygame.quit()
 
 def stats():
+    print('stats')
     pygame.init()
     screen = pygame.display.set_mode((800, 800))
     pygame.display.set_caption('Сапер')
@@ -393,10 +428,12 @@ def stats():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 running = False
                 switch_scene(scene1)
-        wallpaper.run(screen)
+        Wallpaper(screen)
         draw.rect(screen, (255, 255, 255), (200, 200, 400, 400))
         screen.blit(all_games, (220, 300))
-        screen.blit(cont, (220, 350))
+        screen.blit(win_games, (220, 340))
+        screen.blit(lose_games, (220, 380))
+        screen.blit(cont, (220, 420))
         pygame.display.flip()
     pygame.quit()
 
@@ -404,14 +441,63 @@ def stats():
 def game(size, bombs):
     game = Game(size, bombs)
     game.run()
+    print('over')
+    over()
+
+class AnimatedSprite(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.frames = []
+        im = pygame.image.load("pics/boom1.jpg")
+        im = pygame.transform.scale(im, (2548, 1800))
+        self.cut_sheet(im, 3, 2)
+        self.cur_frame = 0
+        self.image = self.frames[self.cur_frame]
+        self.rect = self.rect.move(0, 0)
+
+    def cut_sheet(self, sheet, columns, rows):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                self.frames.append(sheet.subsurface(pygame.Rect(
+                    frame_location, self.rect.size)))
+
+    def update(self):
+        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+        self.image = self.frames[self.cur_frame]
+
+
+def over():
+    clock = pygame.time.Clock()
+    pygame.init()
+    screen = pygame.display.set_mode((800, 800))
+    sprite = AnimatedSprite()
+    group = pygame.sprite.Group(sprite)
+    pygame.display.set_caption('Сапер')
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                running = False
-                switch_scene(scene1)
+                switch_scene(None)
+            elif event.type == KEYDOWN:
+                if event.key == K_SPACE:
+                    running = False
+                    scene1()
+                    break
+        if running:
+            Wallpaper(screen)
+            choice.draw(screen, 250, 300, 75)
+            if WIN:
+                screen.blit(wining, (250, 250))
+            elif LOST:
+                group.update()
+                group.draw(screen)
+                pygame.display.flip()
+                clock.tick(10)
+            pygame.display.flip()
     pygame.quit()
 
 
